@@ -7,6 +7,7 @@ contract HauntedDungeon {
     bool private victory = false;
     address public owner;
     int256[5] private baseStats = [int256(1), int256(3), int256(5), int256(7), int256(50)];
+    string[5] public shopItems = ["lifePotion", "dmgPotion", "defPotion", "leechBlood", "mntnDew"];
     mapping(address => bool) public insideDungeon;
     mapping(address => bool) public combatting;
     mapping(address => uint) public currentFloor;
@@ -15,12 +16,30 @@ contract HauntedDungeon {
     mapping(address => int) public attack;
     mapping(address => int) public defense;
     mapping(address => uint) public spent;
+    mapping(string => uint) public prices;
+    mapping(address => uint) public storeAccessLimit;
+    mapping(string => int8[3]) public effects;
 
     // Logs messages to player
     event Talk(address _to, string _text);
 
     // Initiate contract
     constructor() payable {
+
+        // Set store items' prices
+        prices[shopItems[0]] = 0.6 ether;
+        prices[shopItems[1]] = 1.2 ether;
+        prices[shopItems[2]] = 0.6 ether;
+        prices[shopItems[3]] = 0.45 ether;
+        prices[shopItems[4]] = 0.2 ether;
+
+        // Set item's effects. Col 0 = life, Col 1 = atk, Col 2 = def
+        effects[shopItems[0]] = [int8(4), int8(0), int8(0)];
+        effects[shopItems[1]] = [int8(0), int8(4), int8(0)];
+        effects[shopItems[2]] = [int8(0), int8(0), int8(2)];
+        effects[shopItems[3]] = [int8(-2), int8(0), int8(8)];
+        effects[shopItems[4]] = [int8(-2), int8(12), int8(-4)];
+
         // Set owner
         owner = msg.sender;
         // Set initial bounty. It should be 1 ether
@@ -87,6 +106,7 @@ contract HauntedDungeon {
         treasure += msg.value;
         insideDungeon[msg.sender] = true;
         combatting[msg.sender] = false;
+        storeAccessLimit[msg.sender] = 3;
         currentFloor[msg.sender] = 0;
         lives[msg.sender] = 3;
         attack[msg.sender] = 1;
@@ -94,11 +114,24 @@ contract HauntedDungeon {
         emit Talk(msg.sender, "Welcome to the Haunted Dungeon. Will you be able to conquer it?");
     }
 
+    // Sets up the Dungeon's store
+    function store(string memory _prod) public payable existsTreasure checkInsideDungeon {
+        require(prices[_prod] == msg.value, "Incorrect amount of funds provided to buy that product");
+        require(storeAccessLimit[msg.sender] > 0, "You entered the store too many times! Store is closed now");
+
+        lives[msg.sender] += effects[_prod][0];
+        attack[msg.sender] += effects[_prod][1];
+        defense[msg.sender] += effects[_prod][2];
+        storeAccessLimit[msg.sender] -= 1;
+        spent[msg.sender] += msg.value;
+    }
+
     // Reduce player stats (they get tired) and recover their health
     function restore() private {
         lives[msg.sender] = 3;
         attack[msg.sender] /= 2;
         defense[msg.sender] /= 2;
+        storeAccessLimit[msg.sender] += (1 + currentFloor[msg.sender]);
     }
 
     // Enter a new floow
@@ -112,6 +145,7 @@ contract HauntedDungeon {
             treasure = 0;
             emit Talk(msg.sender, "Congratulations!  You conquered the Dungeon and took the treasure");
             insideDungeon[msg.sender] = false;
+            storeAccessLimit[msg.sender] = 3;
             currentFloor[msg.sender] = 0;
             lives[msg.sender] = 3;
             attack[msg.sender] = 1;
